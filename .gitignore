@@ -1,0 +1,10 @@
+.env
+backend/docs/
+backend/vendor/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+backend/server
