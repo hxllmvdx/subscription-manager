@@ -1,8 +1,7 @@
 package handler
 
 import (
-	"backend/internal/domain"
-	"backend/internal/repository"
+	"backend/internal/service"
 	"log/slog"
 	"net/http"
 
@@ -10,11 +9,11 @@ import (
 )
 
 type SubscriptionHandler struct {
-	repo *repository.SubscriptionRepo
+	svc service.SubscriptionService
 }
 
-func NewSubscriptionHandler(repo *repository.SubscriptionRepo) *SubscriptionHandler {
-	return &SubscriptionHandler{repo: repo}
+func NewSubscriptionHandler(svc service.SubscriptionService) *SubscriptionHandler {
+	return &SubscriptionHandler{svc: svc}
 }
 
 // @Summary Create a new subscription
@@ -35,7 +34,7 @@ func (h *SubscriptionHandler) HandleCreateSubscription(c *gin.Context) {
 		return
 	}
 
-	subscription := &domain.Subscription{
+	serviceReq := &service.CreateSubscriptionRequest{
 		ServiceName: req.ServiceName,
 		Price:       req.Price,
 		UserID:      req.UserID,
@@ -43,17 +42,17 @@ func (h *SubscriptionHandler) HandleCreateSubscription(c *gin.Context) {
 	}
 
 	if req.EndDate != nil && !req.EndDate.IsZero() {
-		subscription.EndDate = &req.EndDate.Time
+		t := req.EndDate.Time
+		serviceReq.EndDate = &t
 	}
 
-	err := h.repo.CreateSubscription(subscription)
+	subscription, err := h.svc.CreateSubscription(serviceReq)
 	if err != nil {
 		slog.Error("failed to create subscription", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create subscription"})
 		return
 	}
 
-	slog.Info("subscription created", "subscription_id", subscription.ID, "user_id", req.UserID)
 	c.JSON(http.StatusCreated, subscription)
 }
 
@@ -74,14 +73,13 @@ func (h *SubscriptionHandler) HandleGetSubscription(c *gin.Context) {
 		return
 	}
 
-	subscription, err := h.repo.GetSubscriptionByID(req.ID)
+	subscription, err := h.svc.GetSubscriptionByID(req.ID)
 	if err != nil {
 		slog.Warn("subscription not found", "id", req.ID, "error", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
 		return
 	}
 
-	slog.Info("subscription retrieved", "id", req.ID)
 	c.JSON(http.StatusOK, subscription)
 }
 
@@ -98,17 +96,10 @@ func (h *SubscriptionHandler) HandleGetSubscription(c *gin.Context) {
 // @Failure 500 {object} gin.H
 // @Router /api/subscriptions/{id} [put]
 func (h *SubscriptionHandler) HandleUpdateSubscription(c *gin.Context) {
-	var req UpdateSubscriptionRequest
-	if err := c.ShouldBindUri(&req); err != nil {
+	var uriReq UpdateSubscriptionRequest
+	if err := c.ShouldBindUri(&uriReq); err != nil {
 		slog.Warn("invalid uri", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	subscription, err := h.repo.GetSubscriptionByID(req.ID)
-	if err != nil {
-		slog.Warn("subscription not found", "id", req.ID, "error", err)
-		c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
 		return
 	}
 
@@ -119,32 +110,34 @@ func (h *SubscriptionHandler) HandleUpdateSubscription(c *gin.Context) {
 		return
 	}
 
+	serviceReq := &service.UpdateSubscriptionRequest{}
+
 	if body.ServiceName != nil {
-		subscription.ServiceName = *body.ServiceName
+		serviceReq.ServiceName = body.ServiceName
 	}
 	if body.Price != nil {
-		subscription.Price = *body.Price
+		serviceReq.Price = body.Price
 	}
 	if body.StartDate != nil && !body.StartDate.IsZero() {
-		subscription.StartDate = body.StartDate.Time
+		t := body.StartDate.Time
+		serviceReq.StartDate = &t
 	}
 	if body.EndDate != nil {
 		if body.EndDate.IsZero() {
-			subscription.EndDate = nil
+			serviceReq.EndDate = nil
 		} else {
 			t := body.EndDate.Time
-			subscription.EndDate = &t
+			serviceReq.EndDate = &t
 		}
 	}
 
-	err = h.repo.UpdateSubscription(subscription)
+	subscription, err := h.svc.UpdateSubscription(uriReq.ID, serviceReq)
 	if err != nil {
-		slog.Error("failed to update subscription", "id", req.ID, "error", err)
+		slog.Error("failed to update subscription", "id", uriReq.ID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update subscription"})
 		return
 	}
 
-	slog.Info("subscription updated", "id", req.ID)
 	c.JSON(http.StatusOK, subscription)
 }
 
@@ -165,14 +158,13 @@ func (h *SubscriptionHandler) HandleDeleteSubscription(c *gin.Context) {
 		return
 	}
 
-	err := h.repo.DeleteSubscription(req.ID)
+	err := h.svc.DeleteSubscription(req.ID)
 	if err != nil {
 		slog.Error("failed to delete subscription", "id", req.ID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete subscription"})
 		return
 	}
 
-	slog.Info("subscription deleted", "id", req.ID)
 	c.JSON(http.StatusNoContent, gin.H{"message": "subscription deleted successfully"})
 }
 
@@ -195,37 +187,27 @@ func (h *SubscriptionHandler) HandleGetSubscriptions(c *gin.Context) {
 		return
 	}
 
-	page := req.Page
-	if page < 1 {
-		page = 1
+	serviceReq := &service.ListSubscriptionsRequest{
+		UserID: req.UserID,
+		Page:   req.Page,
+		Limit:  req.Limit,
 	}
 
-	limit := req.Limit
-	if limit < 1 {
-		limit = 10
-	}
-
-	subscriptions, total, err := h.repo.ListSubscriptions(req.UserID, page, limit)
+	subscriptions, total, totalPages, err := h.svc.ListSubscriptions(serviceReq)
 	if err != nil {
 		slog.Error("failed to list subscriptions", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list subscriptions"})
 		return
 	}
 
-	totalPages := (int(total) + limit - 1) / limit
-	if totalPages == 0 && total > 0 {
-		totalPages = 1
-	}
-
 	response := PaginatedResponse{
 		Items:      subscriptions,
 		Total:      total,
-		Page:       page,
-		Limit:      limit,
+		Page:       serviceReq.Page,
+		Limit:      serviceReq.Limit,
 		TotalPages: totalPages,
 	}
 
-	slog.Info("subscriptions listed", "count", len(subscriptions), "total", total, "page", page, "limit", limit, "user_id", req.UserID)
 	c.JSON(http.StatusOK, response)
 }
 
@@ -249,13 +231,19 @@ func (h *SubscriptionHandler) HandleCalculateTotalPrice(c *gin.Context) {
 		return
 	}
 
-	totalPrice, err := h.repo.CalculateTotalPrice(req.UserID, req.ServiceName, req.PeriodStart.Time, req.PeriodEnd.Time)
+	serviceReq := &service.CalculateTotalPriceRequest{
+		UserID:      req.UserID,
+		ServiceName: req.ServiceName,
+		PeriodStart: req.PeriodStart.Time,
+		PeriodEnd:   req.PeriodEnd.Time,
+	}
+
+	totalPrice, err := h.svc.CalculateTotalPrice(serviceReq)
 	if err != nil {
 		slog.Error("failed to calculate total price", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to calculate total price"})
 		return
 	}
 
-	slog.Info("total price calculated", "total", totalPrice, "user_id", req.UserID, "service", req.ServiceName)
 	c.JSON(http.StatusOK, gin.H{"total_price": totalPrice})
 }

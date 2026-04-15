@@ -7,6 +7,7 @@ import (
 	"backend/internal/migrate"
 	"backend/internal/repository"
 	"backend/internal/routes"
+	"backend/internal/service"
 	"context"
 	"log/slog"
 	"net/http"
@@ -55,7 +56,9 @@ func main() {
 
 	subscriptionRepo := repository.NewSubscriptionRepo(db)
 
-	h := handler.NewSubscriptionHandler(subscriptionRepo)
+	subscriptionService := service.NewSubscriptionService(subscriptionRepo)
+
+	h := handler.NewSubscriptionHandler(subscriptionService)
 
 	router := gin.Default()
 
