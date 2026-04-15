@@ -41,11 +41,11 @@ func main() {
 	}
 
 	sqlDB, err := db.DB()
-	defer sqlDB.Close()
 	if err != nil {
 		slog.Error("failed to get sql.DB", "error", err)
 		return
 	}
+	defer sqlDB.Close()
 
 	if err := migrate.RunMigrations(cfg, sqlDB); err != nil {
 		slog.Error("failed to run migrations", "error", err)
