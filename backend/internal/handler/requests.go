@@ -34,10 +34,10 @@ func (m *MonthYearDate) MarshalJSON() ([]byte, error) {
 }
 
 type CreateSubscriptionRequest struct {
-	ServiceName string        `json:"service_name" binding:"required"`
-	Price       int           `json:"price" binding:"required,gt=0"`
-	UserID      string        `json:"user_id" binding:"required,uuid"`
-	StartDate   MonthYearDate `json:"start_date" binding:"required"`
+	ServiceName string         `json:"service_name" binding:"required"`
+	Price       int            `json:"price" binding:"required,gt=0"`
+	UserID      string         `json:"user_id" binding:"required,uuid"`
+	StartDate   MonthYearDate  `json:"start_date" binding:"required"`
 	EndDate     *MonthYearDate `json:"end_date"`
 }
 
@@ -58,14 +58,24 @@ type DeleteSubscriptionRequest struct {
 }
 
 type UpdateSubscriptionBody struct {
-	ServiceName *string         `json:"service_name"`
-	Price       *int            `json:"price" binding:"omitempty,gt=0"`
-	StartDate   *MonthYearDate  `json:"start_date"`
-	EndDate     *MonthYearDate  `json:"end_date"`
+	ServiceName *string        `json:"service_name"`
+	Price       *int           `json:"price" binding:"omitempty,gt=0"`
+	StartDate   *MonthYearDate `json:"start_date"`
+	EndDate     *MonthYearDate `json:"end_date"`
 }
 
 type GetSubscriptionsRequest struct {
 	UserID string `form:"user_id" binding:"omitempty,uuid"`
+	Page   int    `form:"page" binding:"omitempty,min=1"`
+	Limit  int    `form:"limit" binding:"omitempty,min=1,max=100"`
+}
+
+type PaginatedResponse struct {
+	Items      any   `json:"items"`
+	Total      int64 `json:"total"`
+	Page       int   `json:"page"`
+	Limit      int   `json:"limit"`
+	TotalPages int   `json:"total_pages"`
 }
 
 type CalculateTotalPriceRequest struct {
