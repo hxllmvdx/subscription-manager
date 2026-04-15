@@ -112,7 +112,6 @@ func (h *SubscriptionHandler) HandleUpdateSubscription(c *gin.Context) {
 		return
 	}
 
-	// Bind optional body fields
 	var body UpdateSubscriptionBody
 	if err := c.ShouldBindJSON(&body); err != nil && err.Error() != "EOF" {
 		slog.Warn("invalid request body", "error", err)
@@ -174,15 +173,17 @@ func (h *SubscriptionHandler) HandleDeleteSubscription(c *gin.Context) {
 	}
 
 	slog.Info("subscription deleted", "id", req.ID)
-	c.JSON(http.StatusOK, gin.H{"message": "subscription deleted successfully"})
+	c.JSON(http.StatusNoContent, gin.H{"message": "subscription deleted successfully"})
 }
 
 // @Summary List all subscriptions
-// @Description Get all subscriptions with optional user_id filter
+// @Description Get all subscriptions with optional user_id filter and pagination
 // @Tags subscriptions
 // @Produce json
 // @Param user_id query string false "User ID filter"
-// @Success 200 {object} gin.H{subscriptions=[]domain.Subscription}
+// @Param page query int false "Page number (default: 1)"
+// @Param limit query int false "Items per page (default: 10, max: 100)"
+// @Success 200 {object} handler.PaginatedResponse{items=[]domain.Subscription}
 // @Failure 400 {object} gin.H
 // @Failure 500 {object} gin.H
 // @Router /api/subscriptions [get]
@@ -194,15 +195,38 @@ func (h *SubscriptionHandler) HandleGetSubscriptions(c *gin.Context) {
 		return
 	}
 
-	subscriptions, err := h.repo.ListSubscriptions(req.UserID)
+	page := req.Page
+	if page < 1 {
+		page = 1
+	}
+
+	limit := req.Limit
+	if limit < 1 {
+		limit = 10
+	}
+
+	subscriptions, total, err := h.repo.ListSubscriptions(req.UserID, page, limit)
 	if err != nil {
 		slog.Error("failed to list subscriptions", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list subscriptions"})
 		return
 	}
 
-	slog.Info("subscriptions listed", "count", len(subscriptions), "user_id", req.UserID)
-	c.JSON(http.StatusOK, gin.H{"subscriptions": subscriptions})
+	totalPages := (int(total) + limit - 1) / limit
+	if totalPages == 0 && total > 0 {
+		totalPages = 1
+	}
+
+	response := PaginatedResponse{
+		Items:      subscriptions,
+		Total:      total,
+		Page:       page,
+		Limit:      limit,
+		TotalPages: totalPages,
+	}
+
+	slog.Info("subscriptions listed", "count", len(subscriptions), "total", total, "page", page, "limit", limit, "user_id", req.UserID)
+	c.JSON(http.StatusOK, response)
 }
 
 // @Summary Calculate total price
