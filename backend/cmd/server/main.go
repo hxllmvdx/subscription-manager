@@ -3,6 +3,7 @@ package main
 import (
 	"backend/internal/config"
 	"backend/internal/handler"
+	"backend/internal/middleware"
 	"backend/internal/migrate"
 	"backend/internal/repository"
 	"backend/internal/routes"
@@ -62,6 +63,7 @@ func main() {
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	apiGroup := router.Group("/api")
+	apiGroup.Use(middleware.RequestLogger())
 	routes.SetupApiRoutes(apiGroup, h)
 
 	srv := &http.Server{
