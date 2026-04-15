@@ -6,7 +6,13 @@ import (
 	"backend/internal/migrate"
 	"backend/internal/repository"
 	"backend/internal/routes"
+	"context"
 	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -35,6 +41,7 @@ func main() {
 	}
 
 	sqlDB, err := db.DB()
+	defer sqlDB.Close()
 	if err != nil {
 		slog.Error("failed to get sql.DB", "error", err)
 		return
@@ -57,8 +64,26 @@ func main() {
 	apiGroup := router.Group("/api")
 	routes.SetupApiRoutes(apiGroup, h)
 
+	srv := &http.Server{
+		Addr:    cfg.BackendPort,
+		Handler: router,
+	}
+
 	slog.Info("server starting", "port", cfg.BackendPort)
-	if err := router.Run(cfg.BackendPort); err != nil {
-		slog.Error("failed to start server", "error", err)
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("failed to start server", "error", err)
+		}
+	}()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	<-sigChan
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		slog.Error("failed to shutdown server", "error", err)
 	}
 }

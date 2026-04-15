@@ -1,5 +1,4 @@
 .env
-backend/docs/
 backend/vendor/
 *.exe
 *.exe~
